@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import sys
 from matplotlib import pyplot as plt
+import pandas as pd
 
 def read_files(path):
 	files = []
@@ -13,12 +14,9 @@ def read_files(path):
 
 	return files	
 
-def filter_fourier(img):
-	f = np.fft.fft2(img)
-	fshift = np.fft.fftshift(img)
-	magnitude_spectrum = 20*np.log(np.abs(fshift))
-	cv2.imshow('magnitude_spectrum',magnitude_spectrum)
-	cv2.waitKey()
+def sharping(img):
+	kernel = np.array([[-1,-1,-1],[-1,9,-1],[-1,-1,-1]])
+	return cv2.filter2D(img,-1,kernel)
 	
 def segmentate_image(imgIn):
 	hsv = cv2.cvtColor(imgIn, cv2.COLOR_BGR2HSV)
@@ -60,7 +58,7 @@ def find_segments(th,mask,imgIn):
 		height, width, channels = imgIn.shape
 		# print("(ctr.size)>=dp: {} ctr.size: {} dp: {}".format((ctr.size)>=dp,ctr.size,dp))
 		#se o contorno achado for menor que a imagem e maior que +- tam da menor semnte
-		if ctr.size >= dp and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
+		if ctr.size >= dp-smin and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
 			image = roi.astype('uint8')
 			nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=4)
 			sizes = stats[:, -1]
@@ -77,33 +75,56 @@ def find_segments(th,mask,imgIn):
 	
 	return segments
 
+def calcHuMoments(img):
+	img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+	ret,th = cv2.threshold(img,50,255,cv2.THRESH_BINARY_INV)
+	moment = cv2.moments(img)
+	huMoment = cv2.HuMoments(moment)
+	return map(lambda hu: -1 * np.sign(hu) * np.log10(np.abs(hu)), huMoment)
+ 
+
 def main():
 	files = read_files("database") #Chondrilla_juncea, Brassica_juncea, Ammi_majus
-	bad_files = []
+	files = sorted(files)
+	huMoments = []
 	for f in files:
-		print(f)
+		print('segmenting {} ...'.format(f))
 		imgIn = cv2.imread(f)
-		cv2.imshow(f,imgIn)
-		cv2.waitKey()
-		filter_fourier(imgIn)
 		th,mask = segmentate_image(imgIn)
 		segments = find_segments(th,mask,imgIn)
-		print(len(segments))
+		print('segments: {}'.format(len(segments)))
+		imgin = cv2.resize(imgIn,None,fx=0.75,fy=0.75)
+		cv2.imshow(f,imgin)
+		cv2.moveWindow(f,0,0)
+		cv2.waitKey()
+
 		for seg in segments:
 			im,y,h,x,w = seg
-			# print("y:{} h:{} x:{} w:{}".format(y,h,x,w))
-			# cv2.imshow('seg th',im)
-			# cv2.waitKey()
+			im = im.astype(np.int8)
 
 			imcor = imgIn[y:y + h, x:x + w]
-			im = im.astype(np.int8)
 			imcor = cv2.bitwise_and(imcor,imcor,mask=im)
-			cv2.imshow('seg ori',imcor)
-			cv2.waitKey()
-		
-		print("")
-	for bad in bad_files:
-		print bad
+
+			imcor = sharping(imcor)
+
+			huMoment = calcHuMoments(imcor)
+			huMoment = np.concatenate(huMoment, axis=0)
+			huMoment = huMoment.tolist()
+			huMoments.append(huMoment)
+
+		cv2.destroyAllWindows()
+
+	huMoments = np.array(huMoments)
+
+	df = pd.DataFrame({	'HU1':huMoments[:,0],
+						'HU2':huMoments[:,1],
+						'HU3':huMoments[:,2],
+						'HU4':huMoments[:,3],
+						'HU5':huMoments[:,4],
+						'HU6':huMoments[:,5],
+						'HU7':huMoments[:,6]})
+
+	df.to_csv("huMoments.csv", encoding='utf-8',index = False)
 
 if __name__== "__main__":
   main()
