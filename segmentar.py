@@ -29,40 +29,68 @@ def segmentate_image(imgIn):
 	mask = 255 - th
 	return th,mask
  
-def mean_contours(ctrs):
-	mean = 0
-	sizes = map(lambda x: x.size, ctrs)
+def find_first_big_var(arr):
+	arr = sorted(arr)
+	prev = var = nxt = first_big_var = 0
+	for i in range(len(arr)):
+		nxt = 0
+		var = np.abs(arr[i]-prev)
+
+		if(i+1 != len(arr)):
+			nxt = np.abs(arr[i+1]-arr[i])
+
+		if var > prev and var > nxt:
+			big_var = var
+		
+		prev = arr[i]
+	return big_var
+
+def metrics_contours(ctrs):
+	sizes = map(lambda x: str(x.size), ctrs)
+	sizes = list(dict.fromkeys(sizes))
+	sizes = map(int,sizes)
+	var = find_first_big_var(sizes)
+
 	mean = sum(sizes)/len(sizes)
-	return filter(lambda x: x.size > mean, ctrs), mean
+	ctrs = filter(lambda x: x.size > mean, ctrs)
+	
+	dp = map(lambda x: x.size,ctrs)
+	dp = np.asarray(dp)
+	dp = dp.std()
+
+	if (mean < dp):
+		sizes = map(lambda x: x.size, ctrs)
+		mean = sum(sizes)/len(sizes)
+
+		ctrs = filter(lambda x: x.size > mean, ctrs)
+		dp = map(lambda x: x.size,ctrs)
+		dp = np.asarray(dp)
+		dp = dp.std()
+
+
+	return ctrs, mean, dp, var
 
 def find_segments(th,mask,imgIn):
 	ctrs, hier = cv2.findContours(th.copy(),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
 	segments = []
 	# sort contours
-	ctrs, mean =  mean_contours(ctrs)
 	sorted_ctrs = sorted(ctrs, key=lambda ctr: cv2.boundingRect(ctr)[0])
-
-	dp = map(lambda x: x.size,ctrs)
-	dp = np.asarray(dp)
-	dp = dp.std()
-
-	sizes = map(lambda x: x.size, ctrs)
-	smin = min(sizes)
-	smax = max(sizes)
+	ctrs, mean, dp, var =  metrics_contours(ctrs)
+	faixa = mean/2 if mean>dp else dp/2
+	faixa = np.around(faixa,0)
+	print("mean: {} dp: {} faixa: {} big_var: {}".format(mean,dp,faixa,var))
 	for i, ctr in enumerate(sorted_ctrs):
 		x, y, w, h = cv2.boundingRect(ctr) #ta ao contrario os valores?
 		roi = mask[y:y + h, x:x + w] #aqui seria com a mascara aplicada ja
-		# print("x: {} y: {} w: {} h: {} size: {} dp: {}".format(x,y,w,h,ctr.size,dp))
-		# print("min+dp: {}\tmean: {}\tmax-dp: {}".format(smin+dp,mean,smax-dp))
 		#achar tam imagem
 		height, width, channels = imgIn.shape
-		# print("(ctr.size)>=dp: {} ctr.size: {} dp: {}".format((ctr.size)>=dp,ctr.size,dp))
 		#se o contorno achado for menor que a imagem e maior que +- tam da menor semnte
-		if ctr.size >= dp-smin and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
+		# if ctr.size > 400:
+		#  	print("{}:{}".format(ctr.size,ctr.size > faixa or ctr.size >= var))
+		if (ctr.size >= faixa or ctr.size >= var) and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
 			image = roi.astype('uint8')
 			nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=4)
 			sizes = stats[:, -1]
-
 			max_label = 1
 			max_size = sizes[1]
 			for i in range(2, nb_components):
@@ -72,7 +100,7 @@ def find_segments(th,mask,imgIn):
 			img2 = np.zeros(output.shape)
 			img2[output == max_label] = 255
 			segments.append((img2,y,h,x,w))
-	
+
 	return segments
 
 def calcHuMoments(img):
@@ -87,24 +115,26 @@ def main():
 	files = read_files("database") #Chondrilla_juncea, Brassica_juncea, Ammi_majus
 	files = sorted(files)
 	huMoments = []
+	i = 0
 	for f in files:
 		print('segmenting {} ...'.format(f))
 		imgIn = cv2.imread(f)
 		th,mask = segmentate_image(imgIn)
 		segments = find_segments(th,mask,imgIn)
 		print('segments: {}'.format(len(segments)))
-		imgin = cv2.resize(imgIn,None,fx=0.75,fy=0.75)
-		cv2.imshow(f,imgin)
-		cv2.moveWindow(f,0,0)
-		cv2.waitKey()
-
+		imgin = cv2.resize(imgIn,None,fx=0.5,fy=0.5)
+		# cv2.imshow(f,imgin)
+		# cv2.moveWindow(f,0,0)
+		# cv2.waitKey()
 		for seg in segments:
+			i = i+1
 			im,y,h,x,w = seg
 			im = im.astype(np.int8)
 
 			imcor = imgIn[y:y + h, x:x + w]
 			imcor = cv2.bitwise_and(imcor,imcor,mask=im)
 
+			cv2.imwrite('output/{}.jpg'.format(i),imcor)
 			imcor = sharping(imcor)
 
 			huMoment = calcHuMoments(imcor)
