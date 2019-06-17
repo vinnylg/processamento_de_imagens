@@ -5,6 +5,7 @@ import numpy as np
 import sys
 from matplotlib import pyplot as plt
 import pandas as pd
+from skimage import feature
 
 def read_files(path):
 	files = []
@@ -49,6 +50,7 @@ def metrics_contours(ctrs):
 	sizes = map(lambda x: str(x.size), ctrs)
 	sizes = list(dict.fromkeys(sizes))
 	sizes = map(int,sizes)
+
 	var = find_first_big_var(sizes)
 
 	mean = sum(sizes)/len(sizes)
@@ -78,16 +80,13 @@ def find_segments(th,mask,imgIn):
 	ctrs, mean, dp, var =  metrics_contours(ctrs)
 	faixa = mean/2 if mean>dp else dp/2
 	faixa = np.around(faixa,0)
-	print("mean: {} dp: {} faixa: {} big_var: {}".format(mean,dp,faixa,var))
 	for i, ctr in enumerate(sorted_ctrs):
 		x, y, w, h = cv2.boundingRect(ctr) #ta ao contrario os valores?
 		roi = mask[y:y + h, x:x + w] #aqui seria com a mascara aplicada ja
 		#achar tam imagem
 		height, width, channels = imgIn.shape
 		#se o contorno achado for menor que a imagem e maior que +- tam da menor semnte
-		# if ctr.size > 400:
-		#  	print("{}:{}".format(ctr.size,ctr.size > faixa or ctr.size >= var))
-		if (ctr.size >= faixa or ctr.size >= var) and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
+		if (ctr.size >= faixa or ctr.size >= var or (mean > 2000 and ctr.size > 400)) and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
 			image = roi.astype('uint8')
 			nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(image, connectivity=4)
 			sizes = stats[:, -1]
@@ -109,13 +108,31 @@ def calcHuMoments(img):
 	moment = cv2.moments(img)
 	huMoment = cv2.HuMoments(moment)
 	return map(lambda hu: -1 * np.sign(hu) * np.log10(np.abs(hu)), huMoment)
+
+def calcularLBP(image):
+	image = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+	radius = 3
+	n_points = 8 * radius
+
+	lbp = feature.local_binary_pattern(image, n_points, radius, method = "uniform")
+	(hist, _) = np.histogram(lbp.ravel(),bins=np.arange(0, n_points + 3),range=(0, n_points + 2))
+
+
+	eps=1e-7
+	# normalize the histogram
+	hist = hist.astype("float")
+	hist /= (hist.sum() + eps)
+	
+	return np.array(hist)
+
  
 
 def main():
 	files = read_files("database") #Chondrilla_juncea, Brassica_juncea, Ammi_majus
 	files = sorted(files)
 	huMoments = []
-	i = 0
+	LBP = []
+	seed = 0
 	for f in files:
 		print('segmenting {} ...'.format(f))
 		imgIn = cv2.imread(f)
@@ -127,35 +144,44 @@ def main():
 		# cv2.moveWindow(f,0,0)
 		# cv2.waitKey()
 		for seg in segments:
-			i = i+1
+			seed+=1
 			im,y,h,x,w = seg
 			im = im.astype(np.int8)
 
-			imcor = imgIn[y:y + h, x:x + w]
-			imcor = cv2.bitwise_and(imcor,imcor,mask=im)
+			imCor = imgIn[y:y + h, x:x + w]
+			imCor = cv2.bitwise_and(imCor,imCor,mask=im)
 
-			cv2.imwrite('output/{}.jpg'.format(i),imcor)
-			imcor = sharping(imcor)
+			cv2.imwrite('output/{}.jpg'.format(seed),imCor)
+			imcor = sharping(imCor)
 
 			huMoment = calcHuMoments(imcor)
 			huMoment = np.concatenate(huMoment, axis=0)
 			huMoment = huMoment.tolist()
 			huMoments.append(huMoment)
 
+			lbp = calcularLBP(imcor)
+			lbp = lbp.tolist()
+			LBP.append(lbp)
+
 		cv2.destroyAllWindows()
 
-	huMoments = np.array(huMoments)
+	df = pd.DataFrame()
 
-	df = pd.DataFrame({	'HU1':huMoments[:,0],
-						'HU2':huMoments[:,1],
-						'HU3':huMoments[:,2],
-						'HU4':huMoments[:,3],
-						'HU5':huMoments[:,4],
-						'HU6':huMoments[:,5],
-						'HU7':huMoments[:,6]})
+	huMoments = np.array(huMoments)
+	for i in range(len(huMoments[0])):
+		df["HU{}".format(i+1)] = huMoments[:,i]
 
 	df.to_csv("huMoments.csv", encoding='utf-8',index = False)
 
+	df = pd.DataFrame()
+
+	LBP = np.array(LBP)
+	for i in range(len(LBP[0])):
+		df["data_set_{}".format(i+1)] = LBP[:,i]
+
+	df.to_csv("LBP.csv", encoding='utf-8',index = False)
+
+	print('Were finded {} seeds in all images'.format(seed))
+	
 if __name__== "__main__":
   main()
-#
