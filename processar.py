@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 import os
+import sys
+import shutil
+
 import cv2
 import numpy as np
-import sys
 from matplotlib import pyplot as plt
 import pandas as pd
-from skimage import feature
 
 def read_files(path):
 	files = []
@@ -109,25 +110,13 @@ def calcHuMoments(img):
 	huMoment = cv2.HuMoments(moment)
 	return map(lambda hu: -1 * np.sign(hu) * np.log10(np.abs(hu)), huMoment)
 
-def calcularLBP(image):
-	image = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-	radius = 3
-	n_points = 8 * radius
-
-	lbp = feature.local_binary_pattern(image, n_points, radius, method = "uniform")
-	(hist, _) = np.histogram(lbp.ravel(),bins=np.arange(0, n_points + 3),range=(0, n_points + 2))
-
-
-	eps=1e-7
-	# normalize the histogram
-	hist = hist.astype("float")
-	hist /= (hist.sum() + eps)
-	
-	return np.array(hist)
-
- 
-
 def main():
+	if os.path.isdir("output"):
+		shutil.rmtree("output")
+		os.mkdir("output")
+	else:
+		os.mkdir("output")
+
 	files = read_files("database") #Chondrilla_juncea, Brassica_juncea, Ammi_majus
 	files = sorted(files)
 	huMoments = []
@@ -162,10 +151,6 @@ def main():
 			huMoment = huMoment.tolist()
 			huMoments.append(huMoment)
 
-			lbp = calcularLBP(imcor)
-			lbp = lbp.tolist()
-			LBP.append(lbp)
-
 		cv2.destroyAllWindows()
 
 	df = pd.DataFrame()
@@ -179,16 +164,6 @@ def main():
 	df['segmento'] = seed
 
 	df.to_csv("huMoments.csv", encoding='utf-8',index = False)
-
-	df = pd.DataFrame()
-
-	LBP = np.array(LBP)
-	for i in range(len(LBP[0])):
-		df["data_set_{}".format(i+1)] = LBP[:,i]
-
-	df['segmento'] = seed
-
-	df.to_csv("LBP.csv", encoding='utf-8',index = False)
 
 	print('Were finded {} seeds in all images'.format(len(seed)))
 	

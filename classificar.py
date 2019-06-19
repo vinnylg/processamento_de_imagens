@@ -14,10 +14,23 @@ def main():
     if len(sys.argv) != 2:
         print("USAGE: ./classifica file.csv")
         sys.exit()
+    
+    if not os.path.isfile(sys.argv[1]):
+        print("File not found")
+        sys.exit()
+
+    if not os.path.isdir("output"):
+        print("Output not found. First usage: ./processar.py")
+        sys.exit()
+
+    if not os.path.isfile("output/1.jpg"):
+        print("No have files to process")
+        sys.exit()
+        
 
     data_set = pd.read_csv(sys.argv[1], delimiter = ',')
 
-    X = data_set[['HU1','HU2','HU3','HU4']]
+    X = data_set[['HU1','HU2','HU3']]
     X_normalized = normalize(X)
 
 
@@ -31,12 +44,17 @@ def main():
             os.mkdir("output/{}".format(t))
 
 
+    data_set['kmeans']=y_kmeans
+
+    data_set.to_csv("output/kmeans.csv", encoding='utf-8',index = False)
+    print("Results in output/kmeans.csv")
+    print silhouette_score(X_normalized, kmeans.labels_, metric = 'euclidean')
+
     imgs = data_set['segmento'].values.tolist()
     
     for i in range(len(y_kmeans)):
         shutil.move("output/{}".format(imgs[i]),"output/{}/".format(y_kmeans[i]))
 
-    print silhouette_score(X_normalized, kmeans.labels_, metric = 'euclidean')
 
     plt.scatter(X_normalized[:,0], X_normalized[:,1], c=y_kmeans, s=20, cmap='viridis')
 
