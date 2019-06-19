@@ -132,7 +132,8 @@ def main():
 	files = sorted(files)
 	huMoments = []
 	LBP = []
-	seed = 0
+	seed = []
+	i = 0
 	for f in files:
 		print('segmenting {} ...'.format(f))
 		imgIn = cv2.imread(f)
@@ -140,18 +141,20 @@ def main():
 		segments = find_segments(th,mask,imgIn)
 		print('segments: {}'.format(len(segments)))
 		imgin = cv2.resize(imgIn,None,fx=0.5,fy=0.5)
-		# cv2.imshow(f,imgin)
-		# cv2.moveWindow(f,0,0)
-		# cv2.waitKey()
+		#cv2.imshow(f,imgin)
+		#cv2.moveWindow(f,0,0)
+		#cv2.waitKey()
 		for seg in segments:
-			seed+=1
+			i += 1
+			seed.append(i)
 			im,y,h,x,w = seg
 			im = im.astype(np.int8)
 
 			imCor = imgIn[y:y + h, x:x + w]
 			imCor = cv2.bitwise_and(imCor,imCor,mask=im)
 
-			cv2.imwrite('output/{}.jpg'.format(seed),imCor)
+			cv2.imwrite('output/{}.jpg'.format(seed[i-1]),imCor)
+			imcor = sharping(imCor)
 			imcor = sharping(imCor)
 
 			huMoment = calcHuMoments(imcor)
@@ -171,6 +174,10 @@ def main():
 	for i in range(len(huMoments[0])):
 		df["HU{}".format(i+1)] = huMoments[:,i]
 
+	seed = map(lambda x: str(x)+'.jpg',seed)
+
+	df['segmento'] = seed
+
 	df.to_csv("huMoments.csv", encoding='utf-8',index = False)
 
 	df = pd.DataFrame()
@@ -179,9 +186,11 @@ def main():
 	for i in range(len(LBP[0])):
 		df["data_set_{}".format(i+1)] = LBP[:,i]
 
+	df['segmento'] = seed
+
 	df.to_csv("LBP.csv", encoding='utf-8',index = False)
 
-	print('Were finded {} seeds in all images'.format(seed))
+	print('Were finded {} seeds in all images'.format(len(seed)))
 	
 if __name__== "__main__":
   main()
