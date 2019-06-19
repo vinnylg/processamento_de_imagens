@@ -82,9 +82,8 @@ def find_segments(th,mask,imgIn):
 	faixa = mean/2 if mean>dp else dp/2
 	faixa = np.around(faixa,0)
 	for i, ctr in enumerate(sorted_ctrs):
-		x, y, w, h = cv2.boundingRect(ctr) #ta ao contrario os valores?
-		roi = mask[y:y + h, x:x + w] #aqui seria com a mascara aplicada ja
-		#achar tam imagem
+		x, y, w, h = cv2.boundingRect(ctr) 
+		roi = mask[y:y + h, x:x + w] 
 		height, width, channels = imgIn.shape
 		#se o contorno achado for menor que a imagem e maior que +- tam da menor semnte
 		if (ctr.size >= faixa or ctr.size >= var or (mean > 2000 and ctr.size > 400)) and w < width and h < height:  # Chondrilla_juncea, Brassica_juncea, Ammi_majus don't pass some seeds 
@@ -105,9 +104,10 @@ def find_segments(th,mask,imgIn):
 
 def calcHuMoments(img):
 	img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-	ret,th = cv2.threshold(img,50,255,cv2.THRESH_BINARY_INV)
-	moment = cv2.moments(img)
+	ret,th = cv2.threshold(img,128,255,cv2.THRESH_BINARY_INV)
+	moment = cv2.moments(th)
 	huMoment = cv2.HuMoments(moment)
+
 	return map(lambda hu: -1 * np.sign(hu) * np.log10(np.abs(hu)), huMoment)
 
 def main():
@@ -143,7 +143,6 @@ def main():
 			imCor = cv2.bitwise_and(imCor,imCor,mask=im)
 
 			cv2.imwrite('output/{}.jpg'.format(seed[i-1]),imCor)
-			imcor = sharping(imCor)
 			imcor = sharping(imCor)
 
 			huMoment = calcHuMoments(imcor)
